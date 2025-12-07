@@ -11,23 +11,19 @@ st.set_page_config(
 
 # --- Judul Aplikasi ---
 st.title("Visualisasi Data Gempa Bumi 🌍")
-st.markdown("Visualisasi lokasi gempa berdasarkan `latitude`, `longitude`, dan hasil clustering (`cluster`, `dbscan_cluster`).")
+st.markdown("Pilih model clustering (K-Means / DBSCAN) lalu lihat visualisasinya.")
 
-# --- Sidebar untuk Unggah dan Filter ---
+# --- Sidebar: Upload File ---
 st.sidebar.header("Unggah File Data")
-uploaded_file = st.sidebar.file_uploader(
-    "Pilih file CSV gempa",
-    type=['csv']
-)
+uploaded_file = st.sidebar.file_uploader("Pilih file CSV gempa", type=['csv'])
 
 df = pd.DataFrame()
 if uploaded_file is not None:
-    # Memuat data
     try:
         with st.spinner("Memuat dan memproses data..."):
             df = pd.read_csv(uploaded_file)
 
-            # Konversi cluster & dbscan_cluster sebagai string (untuk visualisasi & filter)
+            # pastikan kolom cluster berbentuk string
             for col in ['cluster', 'dbscan_cluster']:
                 if col in df.columns:
                     df[col] = df[col].fillna(-1).astype(int).astype(str)
@@ -37,106 +33,143 @@ if uploaded_file is not None:
         st.error(f"Gagal memproses file. Error: {e}")
         st.stop()
 
-# Hanya jalankan visualisasi jika kolom wajib ada
+# --- Jika CSV sudah dimuat ---
 if not df.empty and all(col in df.columns for col in ['latitude', 'longitude']):
 
-    st.sidebar.header("Opsi Filter Data")
+    # --- Sidebar: PILIH MODEL ---
+    st.sidebar.header("Pengaturan Visualisasi")
 
-    # Filter berdasarkan cluster K-Means
-    cluster_options = ['Semua'] + sorted(df['cluster'].unique().tolist())
-    selected_cluster = st.sidebar.selectbox("Filter berdasarkan 'cluster' (K-Means):", cluster_options)
+    model_choice = st.sidebar.radio(
+        "Pilih model clustering untuk divisualisasikan:",
+        ["K-Means", "DBSCAN", "Bandingkan Keduanya"]
+    )
 
-    # Filter berdasarkan DBSCAN cluster
-    dbscan_options = ['Semua'] + sorted(df['dbscan_cluster'].unique().tolist())
-    selected_dbscan = st.sidebar.selectbox("Filter berdasarkan 'dbscan_cluster' (DBSCAN):", dbscan_options)
+    # Menentukan kolom cluster mana yang dipakai untuk warna map
+    if model_choice == "K-Means":
+        active_cluster_col = "cluster"
+    elif model_choice == "DBSCAN":
+        active_cluster_col = "dbscan_cluster"
+    else:
+        active_cluster_col = None  # nanti di-handle khusus
 
-    # Terapkan filter
-    filtered_df = df.copy()
-    if selected_cluster != 'Semua':
-        filtered_df = filtered_df[filtered_df['cluster'] == selected_cluster]
+    # --- Sidebar: FILTER berdasar cluster ---
+    if active_cluster_col is not None:
+        cluster_options = ['Semua'] + sorted(df[active_cluster_col].unique().tolist())
+        selected_cluster = st.sidebar.selectbox(
+            f"Filter berdasarkan '{active_cluster_col}':",
+            cluster_options
+        )
 
-    if selected_dbscan != 'Semua':
-        filtered_df = filtered_df[filtered_df['dbscan_cluster'] == selected_dbscan]
+        filtered_df = df.copy()
+        if selected_cluster != 'Semua':
+            filtered_df = filtered_df[filtered_df[active_cluster_col] == selected_cluster]
+
+    else:
+        # jika mode bandingkan, tidak ada filter cluster
+        filtered_df = df.copy()
+        st.sidebar.info("Mode bandingkan aktif — filter dinonaktifkan.")
 
     st.sidebar.markdown(f"**Jumlah Data Setelah Filter:** {len(filtered_df)}")
     st.sidebar.markdown(f"**Total Data Awal:** {len(df)}")
 
-    # ---------------------------------------------
-    # --- VISUALISASI PETA (MAPBOX) ---
-    # ---------------------------------------------
-    st.header("1. Visualisasi Persebaran Gempa (Map Asli)")
+    # -------------------------------------------------------
+    # 1. VISUALISASI MAP
+    # -------------------------------------------------------
+    st.header("1. Visualisasi Persebaran Gempa (Mapbox)")
 
-    color_col = 'dbscan_cluster' if 'dbscan_cluster' in filtered_df.columns else 'cluster'
+    if model_choice == "Bandingkan Keduanya":
+        # Layout 2 kolom: K-Means kiri, DBSCAN kanan
+        col1, col2 = st.columns(2)
 
-    fig_map = px.scatter_mapbox(
-        filtered_df,
-        lat="latitude",
-        lon="longitude",
-        color=color_col,
-        hover_name="cluster",
-        hover_data={
-            "latitude": ':.4f',
-            "longitude": ':.4f',
-            "cluster": True,
-            "dbscan_cluster": True
-        },
-        zoom=3,
-        height=800,
-        mapbox_style="open-street-map",
-        title="Visualisasi Distribusi Cluster Berdasarkan Koordinat (Mapbox)"
-    )
+        # ---- K-Means Map ----
+        with col1:
+            if 'cluster' in df.columns:
+                st.subheader("K-Means")
+                fig_kmeans = px.scatter_mapbox(
+                    df,
+                    lat="latitude",
+                    lon="longitude",
+                    color="cluster",
+                    zoom=3,
+                    height=650,
+                    mapbox_style="open-street-map",
+                    title="K-Means Clustering"
+                )
+                fig_kmeans.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
+                st.plotly_chart(fig_kmeans, use_container_width=True)
+            else:
+                st.warning("Kolom 'cluster' tidak ditemukan.")
 
-    fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
+        # ---- DBSCAN Map ----
+        with col2:
+            if 'dbscan_cluster' in df.columns:
+                st.subheader("DBSCAN")
+                fig_db = px.scatter_mapbox(
+                    df,
+                    lat="latitude",
+                    lon="longitude",
+                    color="dbscan_cluster",
+                    zoom=3,
+                    height=650,
+                    mapbox_style="open-street-map",
+                    title="DBSCAN Clustering"
+                )
+                fig_db.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
+                st.plotly_chart(fig_db, use_container_width=True)
+            else:
+                st.warning("Kolom 'dbscan_cluster' tidak ditemukan.")
 
-    st.plotly_chart(fig_map, use_container_width=True)
+    else:
+        # Mode normal: hanya 1 model
+        fig_map = px.scatter_mapbox(
+            filtered_df,
+            lat="latitude",
+            lon="longitude",
+            color=active_cluster_col,
+            zoom=3,
+            height=800,
+            mapbox_style="open-street-map",
+            title=f"Distribusi Cluster Berdasarkan {model_choice}"
+        )
+        fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
+        st.plotly_chart(fig_map, use_container_width=True)
 
-    # ---------------------------------------------
-    # --- DISTRIBUSI CLUSTER (BAR CHART) ---
-    # ---------------------------------------------
+    # -------------------------------------------------------
+    # 2. DISTRIBUSI CLUSTER
+    # -------------------------------------------------------
     st.header("2. Distribusi Frekuensi Cluster")
-    st.markdown("Jumlah titik data dalam setiap klaster.")
 
-    col_bar1, col_bar2 = st.columns(2)
+    if model_choice == "Bandingkan Keduanya":
+        colA, colB = st.columns(2)
 
-    # Distribusi cluster K-Means
-    with col_bar1:
-        if 'cluster' in filtered_df.columns:
-            st.subheader("Distribusi Cluster K-Means")
-            cluster_counts = filtered_df['cluster'].value_counts().reset_index()
-            cluster_counts.columns = ['Cluster', 'Count']
+        with colA:
+            if "cluster" in df.columns:
+                st.subheader("Distribusi K-Means")
+                ccount = df['cluster'].value_counts().reset_index()
+                ccount.columns = ['Cluster','Count']
+                figA = px.bar(ccount, x='Cluster', y='Count', title="Bar Chart K-Means")
+                st.plotly_chart(figA, use_container_width=True)
 
-            fig_cluster = px.bar(
-                cluster_counts,
-                x='Cluster',
-                y='Count',
-                title="Distribusi Cluster K-Means"
-            )
-            st.plotly_chart(fig_cluster, use_container_width=True)
-        else:
-            st.warning("Kolom 'cluster' tidak ditemukan.")
+        with colB:
+            if "dbscan_cluster" in df.columns:
+                st.subheader("Distribusi DBSCAN")
+                dcount = df['dbscan_cluster'].value_counts().reset_index()
+                dcount.columns = ['DBSCAN','Count']
+                figB = px.bar(dcount, x='DBSCAN', y='Count', title="Bar Chart DBSCAN")
+                st.plotly_chart(figB, use_container_width=True)
 
-    # Distribusi cluster DBSCAN
-    with col_bar2:
-        if 'dbscan_cluster' in filtered_df.columns:
-            st.subheader("Distribusi Cluster DBSCAN")
-            dbscan_counts = filtered_df['dbscan_cluster'].value_counts().reset_index()
-            dbscan_counts.columns = ['DBSCAN_Cluster', 'Count']
+    else:
+        if active_cluster_col in df.columns:
+            count = filtered_df[active_cluster_col].value_counts().reset_index()
+            count.columns = ['Cluster','Count']
+            fig_bar = px.bar(count, x='Cluster', y='Count',
+                             title=f"Distribusi Cluster ({model_choice})")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-            fig_dbscan = px.bar(
-                dbscan_counts,
-                x='DBSCAN_Cluster',
-                y='Count',
-                title="Distribusi Cluster DBSCAN"
-            )
-            st.plotly_chart(fig_dbscan, use_container_width=True)
-        else:
-            st.warning("Kolom 'dbscan_cluster' tidak ditemukan.")
-
-    # ---------------------------------------------
-    # --- DATAFRAME ---
-    # ---------------------------------------------
-    st.header("3. Data Mentah (Tabel)")
-    st.markdown("Berikut data setelah difilter:")
+    # -------------------------------------------------------
+    # 3. DATAFRAME
+    # -------------------------------------------------------
+    st.header("3. Data Mentah")
     st.dataframe(filtered_df)
 
 else:
