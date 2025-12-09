@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("Visualisasi Data Gempa Bumi 🌍")
 st.markdown("Visualisasi hanya menggunakan data lokasi (`latitude`, `longitude`) dan hasil clustering (`cluster`, `dbscan_cluster`).")
 
-# --- Sidebar untuk Unggah File ---
+# --- Sidebar: Upload File ---
 st.sidebar.header("Unggah File Data")
 uploaded_file = st.sidebar.file_uploader("Pilih file CSV gempa Anda", type=['csv'])
 
@@ -23,41 +23,38 @@ if uploaded_file:
         with st.spinner("Memuat data..."):
             df = pd.read_csv(uploaded_file)
 
-            # Normalisasi kolom cluster → string
+            # Normalisasi kolom cluster menjadi string
             for col in ['cluster', 'dbscan_cluster']:
                 if col in df.columns:
                     df[col] = df[col].fillna(-1).astype(int).astype(str)
-                    df[col] = df[col].replace("-1", "N/A")
+                    df[col] = df[col].replace('-1', 'N/A')
 
     except Exception as e:
         st.error(f"Error membaca file CSV: {e}")
         st.stop()
 
-# Jika data siap
-if not df.empty and all(col in df.columns for col in ['latitude', 'longitude']):
+# Jika data valid
+if not df.empty and all(c in df.columns for c in ['latitude', 'longitude']):
 
-    # ------------------------------------------------------
-    # --- OPSI PILIH MODEL VISUALISASI ---
-    # ------------------------------------------------------
-    st.sidebar.header("Pilih Model Visualisasi")
+    # --------------------------------------------------------
+    # --- PILIHAN MODEL VISUALISASI ---
+    # --------------------------------------------------------
+    st.sidebar.header("Model Visualisasi")
     view_model = st.sidebar.radio(
         "Tampilkan Scatter Berdasarkan:",
-        ["Semua Model", "K-Means", "DBSCAN"]
+        ["K-Means", "DBSCAN"]
     )
 
-    # Warna scatter tergantung model
+    # Pilih warna berdasarkan model
     if view_model == "K-Means":
         color_col = "cluster"
-    elif view_model == "DBSCAN":
-        color_col = "dbscan_cluster"
     else:
-        # default gabungan → pakai DBSCAN (lebih informatif)
         color_col = "dbscan_cluster"
 
-    # ------------------------------------------------------
+    # --------------------------------------------------------
     # --- SCATTER LAT-LONG ---
-    # ------------------------------------------------------
-    st.header("1. Visualisasi Scatter Berdasarkan Pilihan Model")
+    # --------------------------------------------------------
+    st.header(f"1. Scatter Plot Berdasarkan {view_model}")
 
     fig = px.scatter(
         df,
@@ -66,47 +63,47 @@ if not df.empty and all(col in df.columns for col in ['latitude', 'longitude']):
         color=color_col,
         hover_data=["latitude", "longitude", "cluster", "dbscan_cluster"],
         height=700,
-        title=f"Scatter Plot Berdasarkan Model: {view_model}"
+        title=f"Scatter Plot Gempa Berdasarkan {view_model}"
     )
 
     fig.update_layout(
         xaxis_title="Longitude",
         yaxis_title="Latitude",
-        margin={"r":0, "t":40, "l":0, "b":0}
+        margin={"r":0,"t":40,"l":0,"b":0}
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # ------------------------------------------------------
+    # --------------------------------------------------------
     # --- DISTRIBUSI CLUSTER ---
-    # ------------------------------------------------------
-    st.header("2. Distribusi Cluster")
+    # --------------------------------------------------------
+    st.header("2. Distribusi Frekuensi Cluster")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        if "cluster" in df.columns:
-            st.subheader("K-Means")
-            count_k = df["cluster"].value_counts().reset_index()
-            count_k.columns = ["Cluster", "Count"]
-
-            fig_k = px.bar(count_k, x="Cluster", y="Count",
-                           title="Distribusi Cluster K-Means")
-            st.plotly_chart(fig_k, use_container_width=True)
+        if 'cluster' in df.columns:
+            st.subheader("Distribusi K-Means")
+            c1 = df['cluster'].value_counts().reset_index()
+            c1.columns = ['Cluster', 'Count']
+            st.plotly_chart(
+                px.bar(c1, x='Cluster', y='Count', title="Distribusi Cluster K-Means"),
+                use_container_width=True
+            )
 
     with col2:
-        if "dbscan_cluster" in df.columns:
-            st.subheader("DBSCAN")
-            count_d = df["dbscan_cluster"].value_counts().reset_index()
-            count_d.columns = ["DBSCAN Cluster", "Count"]
+        if 'dbscan_cluster' in df.columns:
+            st.subheader("Distribusi DBSCAN")
+            c2 = df['dbscan_cluster'].value_counts().reset_index()
+            c2.columns = ['DBSCAN Cluster', 'Count']
+            st.plotly_chart(
+                px.bar(c2, x='DBSCAN Cluster', y='Count', title="Distribusi Cluster DBSCAN"),
+                use_container_width=True
+            )
 
-            fig_d = px.bar(count_d, x="DBSCAN Cluster", y="Count",
-                           title="Distribusi Cluster DBSCAN")
-            st.plotly_chart(fig_d, use_container_width=True)
-
-    # ------------------------------------------------------
-    # --- TABEL DATA ---
-    # ------------------------------------------------------
+    # --------------------------------------------------------
+    # --- DATA TABEL ---
+    # --------------------------------------------------------
     st.header("3. Data Mentah")
     st.dataframe(df)
 
